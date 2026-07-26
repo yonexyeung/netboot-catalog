@@ -5,13 +5,15 @@ distribution: vyos
 homepage: https://vyos.io
 maintainer: community
 
+# VyOS uses Debian live-boot framework.
+# Distinguished from plain Debian by presence of vyos-specific files.
 detection:
   - file_exists: live/vmlinuz
   - file_exists: live/initrd.img
   - file_exists: live/filesystem.squashfs
   - file_contains:
-      path: live/filesystem.packages
-      pattern: "vyos"
+      path: isolinux/menu.cfg
+      pattern: "VyOS"
 
 assets:
   kernel: live/vmlinuz

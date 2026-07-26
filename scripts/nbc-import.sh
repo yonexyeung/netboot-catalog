@@ -161,7 +161,19 @@ extract_assets() {
     # Validate source files exist
     [[ -f "$mount_point/$kernel" ]] || die "Kernel not found: $kernel"
     [[ -f "$mount_point/$initrd" ]] || die "Initrd not found: $initrd"
-    [[ -f "$mount_point/$rootfs" ]] || die "Rootfs not found: $rootfs"
+    
+    # Check if rootfs is optional
+    local rootfs_optional
+    rootfs_optional=$(yq '.assets.rootfs_optional // "false"' "$adapter_file")
+    
+    if [[ -f "$mount_point/$rootfs" ]]; then
+        : # rootfs exists, will copy below
+    elif [[ "$rootfs_optional" == "true" ]]; then
+        log "  Rootfs not found (optional): $rootfs"
+        rootfs=""
+    else
+        die "Rootfs not found: $rootfs"
+    fi
     
     # Copy assets (use basename to flatten into dest dir)
     log "  Extracting kernel: $kernel"
@@ -170,8 +182,10 @@ extract_assets() {
     log "  Extracting initrd: $initrd"
     cp "$mount_point/$initrd" "$dest_dir/$(basename "$initrd")"
     
-    log "  Extracting rootfs: $rootfs"
-    cp "$mount_point/$rootfs" "$dest_dir/$(basename "$rootfs")"
+    if [[ -n "$rootfs" ]]; then
+        log "  Extracting rootfs: $rootfs"
+        cp "$mount_point/$rootfs" "$dest_dir/$(basename "$rootfs")"
+    fi
 }
 
 # Generate recipe.yaml for the catalog entry
@@ -190,7 +204,14 @@ generate_recipe() {
     local kernel_file initrd_file rootfs_file
     kernel_file=$(basename "$(yq '.assets.kernel' "$adapter_file")")
     initrd_file=$(basename "$(yq '.assets.initrd' "$adapter_file")")
-    rootfs_file=$(basename "$(yq '.assets.rootfs' "$adapter_file")")
+    rootfs_file=$(yq '.assets.rootfs' "$adapter_file")
+    
+    # rootfs may not have been extracted (optional)
+    if [[ -f "$dest_dir/$(basename "$rootfs_file")" ]]; then
+        rootfs_file=$(basename "$rootfs_file")
+    else
+        rootfs_file=""
+    fi
     
     # Get ISO hash for provenance
     local iso_sha256
