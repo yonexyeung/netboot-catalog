@@ -105,7 +105,12 @@ EOF
         
         local entry_url="${BASE_URL}/${id}"
         
+        # Kernel and initrd served via TFTP (bypasses iPXE image trust)
+        # Rootfs served via HTTP (fetched by kernel, not iPXE)
+        local tftp_prefix="catalog/${id}"
+        
         # Expand template variables in boot args
+        # rootfs_url uses HTTP (kernel fetches it after boot, not subject to iPXE trust)
         local expanded_args="$boot_args"
         expanded_args="${expanded_args//\{\{base_url\}\}/$entry_url}"
         expanded_args="${expanded_args//\{\{kernel_url\}\}/$entry_url/$kernel_file}"
@@ -114,8 +119,8 @@ EOF
         
         echo ""
         echo ":${id}"
-        echo "kernel ${entry_url}/${kernel_file} ${expanded_args}"
-        echo "initrd ${entry_url}/${initrd_file}"
+        echo "kernel tftp://\${next-server}/${tftp_prefix}/${kernel_file} ${expanded_args}"
+        echo "initrd tftp://\${next-server}/${tftp_prefix}/${initrd_file}"
         echo "boot"
         
         # Variants
@@ -134,8 +139,8 @@ EOF
                 
                 echo ""
                 echo ":${id}--${vkey}"
-                echo "kernel ${entry_url}/${kernel_file} ${expanded_vargs}"
-                echo "initrd ${entry_url}/${initrd_file}"
+                echo "kernel tftp://\${next-server}/${tftp_prefix}/${kernel_file} ${expanded_vargs}"
+                echo "initrd tftp://\${next-server}/${tftp_prefix}/${initrd_file}"
                 echo "boot"
             done
         fi
