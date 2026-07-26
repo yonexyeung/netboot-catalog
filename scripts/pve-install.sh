@@ -31,58 +31,47 @@ msg_ok()   { echo -e "${BFR}${CM} ${GN}${1}${NC}"; }
 msg_err()  { echo -e "${BFR}${RD}✗ ${1}${NC}"; exit 1; }
 
 # --- Helpers: detect available resources ---
-get_storages_for_content() {
-    # Returns active storages that support given content type
-    # Usage: get_storages_for_content "rootdir" or "vztmpl"
-    local content="$1"
-    pvesm status 2>/dev/null | awk -v c="$content" '
-        NR>1 && $2=="active" {
-            cmd = "pvesm status --storage " $1 " 2>/dev/null"
-            print $1
-        }
-    '
-    # More reliable: check each storage's content types
-    for store in $(pvesm status 2>/dev/null | awk 'NR>1 && $2=="active" {print $1}'); do
-        if pvesm status --storage "$store" 2>/dev/null | grep -q "$content" || \
-           grep -q "content.*$content" "/etc/pve/storage.cfg" 2>/dev/null | grep -A5 "^[a-z].*: $store" | grep -q "$content"; then
-            :
-        fi
-    done
-}
 
 get_rootdir_storages() {
-    # Storages that can hold LXC rootfs (content: rootdir or images)
+    # Storages that support rootdir or images content (from storage.cfg)
     local stores=()
+    local current_store=""
+    local is_active=true
     while IFS= read -r line; do
-        local name type status
-        name=$(echo "$line" | awk '{print $1}')
-        type=$(echo "$line" | awk '{print $2}')
-        status=$(echo "$line" | awk '{print $3}')
-        [[ "$status" == "active" ]] || continue
-        # Check if storage supports rootdir content
-        local cfg_content
-        cfg_content=$(pvesm show "$name" 2>/dev/null | grep "^content" | awk '{print $2}' || true)
-        if echo "$cfg_content" | grep -qE "(rootdir|images)"; then
-            stores+=("$name")
+        # New storage block (e.g. "btrfs: local-btrfs" or "dir: local")
+        if [[ "$line" =~ ^[a-z]+:\ (.+)$ ]]; then
+            current_store="${BASH_REMATCH[1]}"
+            is_active=true
+        elif [[ "$line" =~ ^[[:space:]]+disable$ ]]; then
+            is_active=false
+        elif [[ "$line" =~ ^[[:space:]]+content[[:space:]]+(.+)$ ]] && $is_active; then
+            local content="${BASH_REMATCH[1]}"
+            if echo "$content" | grep -qE "(rootdir|images)"; then
+                stores+=("$current_store")
+            fi
         fi
-    done < <(pvesm status 2>/dev/null | tail -n +2)
+    done < /etc/pve/storage.cfg
     echo "${stores[@]}"
 }
 
 get_vztmpl_storages() {
-    # Storages that can hold CT templates
+    # Storages that support vztmpl content
     local stores=()
+    local current_store=""
+    local is_active=true
     while IFS= read -r line; do
-        local name status
-        name=$(echo "$line" | awk '{print $1}')
-        status=$(echo "$line" | awk '{print $3}')
-        [[ "$status" == "active" ]] || continue
-        local cfg_content
-        cfg_content=$(pvesm show "$name" 2>/dev/null | grep "^content" | awk '{print $2}' || true)
-        if echo "$cfg_content" | grep -q "vztmpl"; then
-            stores+=("$name")
+        if [[ "$line" =~ ^[a-z]+:\ (.+)$ ]]; then
+            current_store="${BASH_REMATCH[1]}"
+            is_active=true
+        elif [[ "$line" =~ ^[[:space:]]+disable$ ]]; then
+            is_active=false
+        elif [[ "$line" =~ ^[[:space:]]+content[[:space:]]+(.+)$ ]] && $is_active; then
+            local content="${BASH_REMATCH[1]}"
+            if echo "$content" | grep -q "vztmpl"; then
+                stores+=("$current_store")
+            fi
         fi
-    done < <(pvesm status 2>/dev/null | tail -n +2)
+    done < /etc/pve/storage.cfg
     echo "${stores[@]}"
 }
 
