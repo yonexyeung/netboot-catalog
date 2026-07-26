@@ -150,7 +150,7 @@ mkdir -p "$CATALOG_DIR"
 
 # --- Download ISO ---
 if [[ -z "$ISO_FILE" ]]; then
-    ISO_FILE="/tmp/nbc-test-$(basename "$ISO_URL")"
+    ISO_FILE="/var/tmp/nbc-test-$(basename "$ISO_URL")"
     if [[ -f "$ISO_FILE" ]]; then
         log "ISO already downloaded: $ISO_FILE"
     else
@@ -242,7 +242,7 @@ echo ""
 
 # --- Test 7: nbc generate ---
 log "Test: nbc generate"
-MENU_FILE="/tmp/nbc-test-menu.ipxe"
+MENU_FILE="/var/tmp/nbc-test-menu.ipxe"
 rm -f "$MENU_FILE"
 
 if "$NBC" generate --output "$MENU_FILE" --base-url "$TEST_BASE_URL"; then

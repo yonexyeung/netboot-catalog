@@ -41,7 +41,8 @@ check_deps() {
 mount_iso() {
     local iso="$1"
     local mount_point
-    mount_point=$(mktemp -d "/tmp/nbc-mount.XXXXXX")
+    local tmp_base="${NBC_TMP_DIR:-/var/tmp}"
+    mount_point=$(mktemp -d "$tmp_base/nbc-mount.XXXXXX")
     
     # Method 1: mount -o loop (requires root + loop device support)
     if command -v mount >/dev/null && mount -o loop,ro "$iso" "$mount_point" 2>/dev/null; then
@@ -298,7 +299,7 @@ main() {
     
     # Step 4: Extract to temp, then atomic move
     local temp_dir
-    temp_dir=$(mktemp -d "/tmp/nbc-extract.XXXXXX")
+    temp_dir=$(mktemp -d "${NBC_TMP_DIR:-/var/tmp}/nbc-extract.XXXXXX")
     
     log "Extracting assets..."
     extract_assets "$adapter_file" "$mount_point" "$temp_dir"
