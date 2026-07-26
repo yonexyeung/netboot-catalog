@@ -46,9 +46,13 @@ log "Starting dnsmasq (proxyDHCP + TFTP)..."
 dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/nbc.conf &
 DNSMASQ_PID=$!
 
-# Start nginx (as root to access catalog files owned by root)
+# Ensure catalog files are readable by nginx (www-data)
+# If volume is read-only, this is a no-op (permissions should be set at import time)
+chmod -R o+rX /srv/catalog 2>/dev/null || true
+
+# Start nginx
 log "Starting nginx (HTTP)..."
-nginx -g "daemon off; user root;" &
+nginx -g "daemon off;" &
 NGINX_PID=$!
 
 # File watcher — auto-import ISOs dropped into /srv/import

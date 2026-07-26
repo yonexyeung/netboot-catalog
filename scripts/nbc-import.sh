@@ -350,6 +350,7 @@ main() {
     
     # Step 7: Atomic move to catalog
     mkdir -p "$CATALOG_DIR"
+    chmod -R a+rX "$temp_dir"
     mv "$temp_dir" "$entry_dir"
     
     log "Done! Entry created: $entry_dir"
