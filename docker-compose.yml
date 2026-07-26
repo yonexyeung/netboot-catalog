@@ -1,0 +1,14 @@
+services:
+  nbc:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: nbc
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+    volumes:
+      - ./catalog:/srv/catalog:ro
+      - ./import:/srv/import
+    restart: unless-stopped
