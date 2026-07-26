@@ -34,7 +34,7 @@ fi
 
 # Start dnsmasq
 log "Starting dnsmasq (proxyDHCP + TFTP)..."
-dnsmasq --no-daemon --log-queries &
+dnsmasq --no-daemon --conf-file=/etc/dnsmasq.d/nbc.conf &
 DNSMASQ_PID=$!
 
 # Start nginx
