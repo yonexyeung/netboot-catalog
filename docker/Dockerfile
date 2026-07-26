@@ -21,10 +21,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" \
     -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 
-# Download iPXE binaries
+# Download iPXE binaries from official GitHub releases
 RUN mkdir -p /srv/tftp && \
-    curl -fsSL "https://boot.ipxe.org/undionly.kpxe" -o /srv/tftp/undionly.kpxe && \
-    curl -fsSL "https://boot.ipxe.org/ipxe.efi" -o /srv/tftp/ipxe.efi
+    curl -fsSL "https://github.com/ipxe/ipxe/releases/latest/download/ipxeboot.tar.gz" \
+      -o /tmp/ipxe.tar.gz && \
+    tar -xzf /tmp/ipxe.tar.gz -C /tmp && \
+    cp /tmp/ipxeboot/bin/undionly.kpxe /srv/tftp/undionly.kpxe && \
+    cp /tmp/ipxeboot/bin-x86_64-efi/ipxe.efi /srv/tftp/ipxe.efi && \
+    rm -rf /tmp/ipxe.tar.gz /tmp/ipxeboot
 
 # Copy project files
 COPY scripts/ /opt/nbc/scripts/
