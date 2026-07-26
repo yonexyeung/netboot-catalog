@@ -261,7 +261,7 @@ EOF
 
     if [[ -n "$variants_yaml" ]]; then
         echo "  variants:" >> "$dest_dir/recipe.yaml"
-        yq '.boot.variants | to_entries | .[] | "    " + .key + ": \"" + .value + "\""' "$adapter_file" >> "$dest_dir/recipe.yaml"
+        yq '.boot.variants | to_entries | .[] | "    " + .key + ": " + (.value | @json)' "$adapter_file" >> "$dest_dir/recipe.yaml"
     fi
     
     log "  Generated recipe.yaml"
