@@ -76,7 +76,7 @@ EOF
         echo "item ${id} ${name}"
         
         # Add variants
-        if [[ $(yq '.boot.variants // "" | length' "$recipe" 2>/dev/null) -gt 0 ]]; then
+        if yq -e '.boot.variants' "$recipe" >/dev/null 2>&1; then
             local variant_keys
             variant_keys=$(yq '.boot.variants | keys | .[]' "$recipe" 2>/dev/null || true)
             for vkey in $variant_keys; do
@@ -119,7 +119,7 @@ EOF
         echo "boot"
         
         # Variants
-        if [[ $(yq '.boot.variants // "" | length' "$recipe" 2>/dev/null) -gt 0 ]]; then
+        if yq -e '.boot.variants' "$recipe" >/dev/null 2>&1; then
             local variant_keys
             variant_keys=$(yq '.boot.variants | keys | .[]' "$recipe" 2>/dev/null || true)
             for vkey in $variant_keys; do
