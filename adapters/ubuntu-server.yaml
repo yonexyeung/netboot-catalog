@@ -29,7 +29,7 @@ boot:
   # Primary method: serve entire ISO over HTTP, kernel fetches it via url=
   default: "ip=dhcp url={{base_url}}/ubuntu-server.iso cloud-init=disabled"
   variants:
-    autoinstall: "ip=dhcp url={{base_url}}/ubuntu-server.iso autoinstall ds=nocloud-net\\;s={{base_url}}/autoinstall/"
+    autoinstall: 'ip=dhcp url={{base_url}}/ubuntu-server.iso autoinstall ds=nocloud-net\;s={{base_url}}/autoinstall/'
     debug: "ip=dhcp url={{base_url}}/ubuntu-server.iso cloud-init=disabled debug"
 
 validation:
