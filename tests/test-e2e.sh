@@ -17,7 +17,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 NBC="$PROJECT_ROOT/scripts/nbc"
 TEST_BASE_URL="http://10.0.0.1/catalog"
 
-# Debian Live Standard — small (~1.5GB), well-structured
+# Debian 13 Live Standard (~2GB), well-structured
 ISO_URL="https://cdimage.debian.org/debian-cd/current-live/amd64/iso-hybrid/debian-live-13.6.0-amd64-standard.iso"
 ISO_FILE=""
 KEEP=false
@@ -118,24 +118,68 @@ echo ""
 
 # Check root
 if [[ $EUID -ne 0 ]]; then
-    echo "This test requires root (for mount -o loop)."
+    echo "This test requires root (for package install + mount attempt)."
     echo "Run: sudo $0"
     exit 1
 fi
 
+# Auto-install missing dependencies
+install_deps() {
+    local to_install=()
+
+    command -v wget >/dev/null      || to_install+=(wget)
+    command -v curl >/dev/null     || to_install+=(curl)
+    command -v bsdtar >/dev/null    || to_install+=(libarchive-tools)
+    command -v 7z >/dev/null        || to_install+=(7zip)
+    command -v sha256sum >/dev/null || to_install+=(coreutils)
+
+    if ! command -v yq >/dev/null; then
+        log "Installing yq..."
+        curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" \
+            -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+    fi
+
+    if [[ ${#to_install[@]} -gt 0 ]]; then
+        log "Installing missing packages: ${to_install[*]}"
+        apt-get update -qq && apt-get install -y -qq "${to_install[@]}"
+    fi
+}
+
+install_deps
+
 # Check dependencies
 log "Checking dependencies..."
-for cmd in mount umount sha256sum wget; do
+for cmd in sha256sum wget; do
     assert_command_succeeds "dependency: $cmd" command -v "$cmd"
 done
+
+# Extraction tools — need at least one
+EXTRACT_OK=false
+if command -v bsdtar >/dev/null; then
+    pass "dependency: bsdtar"
+    EXTRACT_OK=true
+else
+    fail "dependency: bsdtar — not installed"
+fi
+if command -v 7z >/dev/null; then
+    pass "dependency: 7z"
+    EXTRACT_OK=true
+else
+    fail "dependency: 7z — not installed"
+fi
+if command -v mount >/dev/null; then
+    pass "dependency: mount"
+    EXTRACT_OK=true
+fi
+
+if ! $EXTRACT_OK; then
+    die "No extraction tool available (need bsdtar, 7z, or mount)"
+fi
 
 if command -v yq >/dev/null; then
     pass "dependency: yq"
 else
     fail "dependency: yq — not installed"
-    echo ""
-    echo "Install yq:"
-    echo "  wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && chmod +x /usr/local/bin/yq"
     exit 1
 fi
 
