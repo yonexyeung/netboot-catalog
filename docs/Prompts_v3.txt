@@ -1,0 +1,420 @@
+NetBoot Catalog — Architecture Review Prompts v3
+
+Total: 15 Prompts
+Structure: Foundation → Architecture → Feasibility → Sustainability → Synthesis
+
+═══════════════════════════════════════════════════════════════
+Phase 1: Product Foundation（先確認值唔值得做）
+═══════════════════════════════════════════════════════════════
+
+Prompt 1：Devil's Advocate（反方）
+
+你的任務不是提出改善建議，而是證明這個產品不應該存在。
+
+請用最嚴格的標準挑戰：
+
+- Product 是否值得存在
+- 問題是否真的存在
+- 是否只是重新包裝現有工具
+- 是否只是 Engineering Hobby
+- 是否存在真正的競爭優勢
+- 是否值得投入五年以上維護
+
+如果你認為：
+
+- iVentoy
+- netboot.xyz
+- MAAS
+- Cobbler
+- Foreman
+
+已足夠解決問題，
+
+請提出完整論證。
+
+你的目標不是改善產品，而是說服我停止整個專案。
+
+---
+
+Prompt 2：Product Manager（產品）
+
+你是一位資深 Product Manager。
+
+不要評論程式設計。
+
+請驗證：
+
+- 真正 Problem
+- Target User
+- User Journey
+- Current Workflow
+- Future Workflow
+- MVP 是否聚焦
+- Scope Creep
+- Differentiation
+- Product Positioning
+- Long-term Product Strategy
+
+最後請回答：
+
+這是一個 Painkiller，
+還是 Vitamin？
+
+---
+
+Prompt 3：End User（使用者代言人）
+
+你是一位 Homelab 使用者。
+
+你有 5 台 Server。
+你經常需要 PXE boot 不同 Linux ISO。
+你目前用 iVentoy。
+
+請不要評論架構。
+不要評論程式。
+
+請用第一人稱描述：
+
+1. 你目前如何完成工作（Current Workflow）
+2. 你遇到的最大痛點
+3. 如果有人給你 NetBoot Catalog，你會怎麼用
+4. 你願意花多少時間設定
+5. 你會因為什麼原因放棄使用
+6. 你最不能接受什麼 limitation
+7. 如果只能有一個功能，你要什麼
+
+最後回答：
+
+你會從 iVentoy 切換到這個工具嗎？
+為什麼？
+
+═══════════════════════════════════════════════════════════════
+Phase 2: Domain & Architecture（確認點做）
+═══════════════════════════════════════════════════════════════
+
+Prompt 4：Domain Expert（DDD）
+
+你是一位 Domain-Driven Design Consultant。
+
+不要評論 Framework。
+
+不要評論 Layer。
+
+重新定義：
+
+- Ubiquitous Language
+- Domain
+- Bounded Context
+- Aggregate
+- Entity
+- Value Object
+- Domain Service
+- Domain Event
+
+請指出：
+
+- 哪些只是 Infrastructure。
+- 哪些只是 Implementation Detail。
+- 哪些抽象根本不存在。
+
+---
+
+Prompt 5：Principal Architect（架構）
+
+你是一位 Principal Architect，
+負責設計可維護十年以上的平台。
+
+請不要優化目前架構。
+
+而是重新驗證：
+
+- Product Boundary
+- Architecture Boundary
+- Dependency Direction
+- Layer
+- Runtime
+- Extensibility
+- Maintainability
+- Platform Scalability（如有）
+
+如果需要，
+可以完全推翻目前設計。
+
+請重新畫出：
+
+Architecture Dependency Graph。
+
+---
+
+Prompt 6：Technical Historian（技術演化）
+
+你是一位 Technical Historian。
+
+請不要評論目前設計。
+
+請分析歷史上相似產品：
+
+- Docker
+- Terraform
+- Helm
+- Homebrew
+- Kubernetes
+- Ansible
+- Packer
+- Nix
+- Ventoy
+- netboot.xyz
+
+回答：
+
+1. 它們最初真正解決的是什麼問題？
+2. 為什麼成功？
+3. 為什麼失敗（如果有）？
+4. NetBoot Catalog 今天是否正在重複它們曾經犯過的錯？
+5. 哪些歷史經驗值得借鏡？
+
+最後回答：
+
+如果你是當年 Docker 或 Terraform 的 Principal Engineer，
+你今天會如何設計這個產品？
+
+═══════════════════════════════════════════════════════════════
+Phase 3: Feasibility & Risk（確認做唔做到）
+═══════════════════════════════════════════════════════════════
+
+Prompt 7：Security Architect（安全）
+
+你是一位 Security Architect。
+
+請分析：
+
+- Trust Boundary
+- Threat Model
+- Attack Surface
+- ISO Import
+- Boot Assets
+- HTTP/TFTP
+- DHCP
+- Runtime
+- Web UI
+- REST API
+- Adapter
+- Plugin
+- Supply Chain
+
+請指出：
+
+- 最大安全風險
+- 最危險信任邊界
+- 最容易被攻擊位置
+
+---
+
+Prompt 8：DevOps / SRE（營運）
+
+你是一位 SRE。
+
+請分析：
+
+- Deployment
+- Upgrade
+- Rollback
+- Backup
+- Restore
+- Disaster Recovery
+- Observability
+- Logging
+- Metrics
+- Tracing
+- Day-2 Operations
+
+請回答：
+
+五年後，
+是否仍容易維護？
+
+---
+
+Prompt 9：Competitive Intelligence（競品技術深度）
+
+你是一位 Competitive Intelligence Analyst。
+
+請深入分析以下產品的「技術實現」（不只是功能）：
+
+- iVentoy：如何實現 ISO boot（memdisk? loopback? extraction?）
+- netboot.xyz：Custom menu 機制的限制
+- OpenPXE：ISO introspection 的具體做法
+
+對每個競品回答：
+
+1. 技術上它如何 boot 一個 ISO？
+2. 它的方法有什麼固有限制？
+3. NetBoot Catalog 的方法是否技術上更優？
+4. 如果不是，為什麼還要做？
+
+最後回答：
+
+NetBoot Catalog 的技術路線相比競品，
+是 Evolutionary Improvement 還是 Fundamental Difference？
+
+═══════════════════════════════════════════════════════════════
+Phase 4: Sustainability（確認活唔活到）
+═══════════════════════════════════════════════════════════════
+
+Prompt 10：Open Source Maintainer（開源）
+
+你是一位維護大型 Open Source Project 十年以上的 Maintainer。
+
+請分析：
+
+- Contributor Experience
+- API Stability
+- Versioning
+- Compatibility
+- Community Governance
+- Plugin Ecosystem
+- Adapter Ecosystem
+- Documentation Cost
+- Long-term Maintenance Cost
+
+請指出：
+
+- 哪些應開放社群維護？
+- 哪些必須由 Core Team 維護？
+
+---
+
+Prompt 11：Systems Thinker（系統演化）
+
+你是一位 Systems Thinker。
+
+不要評論程式。
+不要評論 Framework。
+
+請分析：
+
+1. 這個產品有哪些 Feedback Loop？
+2. 哪些能力會隨著社群成長而變得更有價值？
+3. 哪些設計會隨著規模增加而崩潰？
+4. 哪些地方具有 Network Effect？
+5. 哪些地方會形成 Maintenance Death Spiral？
+
+6. 如果：
+   - 100 個 Boot Recipe
+   - 1000 個 Boot Recipe
+   - 10000 個 Boot Recipe
+
+   產品會如何演化？
+
+最後回答：
+
+這個產品五年後會自然成長，
+還是自然死亡？
+
+---
+
+Prompt 12：Ecosystem Strategist（生態策略）
+
+你是一位 Ecosystem Strategist。
+
+不要評論程式。
+不要評論 Architecture。
+
+請分析：
+
+1. 這個產品應否建立自己的 Ecosystem？
+2. 還是應成為其他 Ecosystem 的一部分？
+
+例如：
+
+- iPXE
+- netboot.xyz
+- MAAS
+- Foreman
+- Proxmox
+- OpenTofu
+
+請分析：
+
+- Build Tool？
+- Build Library？
+- Build Platform？
+- Build Standard？
+
+最後回答：
+
+五年後，
+最合理的位置在哪裡？
+
+═══════════════════════════════════════════════════════════════
+Phase 5: Synthesis（整理 + 判決）
+═══════════════════════════════════════════════════════════════
+
+Prompt 13：Research Reviewer（Evidence）
+
+你的任務不是評論設計。
+
+而是驗證所有結論是否具有 Evidence。
+
+將所有結論分類：
+
+- Confirmed — 已有充分證據支持。
+- Likely — 有合理推論，但缺乏驗證。
+- Hypothesis — 純屬假設。
+- Requires Prototype — 必須透過 Prototype 驗證。
+- Requires User Interview — 必須透過真實使用者驗證。
+- Requires Benchmark — 必須透過 Benchmark 驗證。
+
+請不要提出新的設計，
+只驗證目前所有假設是否可信。
+
+---
+
+Prompt 14：Platform Engineer（平台）
+
+你是一位 Platform Engineer。
+
+負責管理數千台 Linux Server。
+
+忽略 Homelab。
+
+請分析：
+
+- 是否具有 Platform Potential
+- 是否可水平擴展
+- Multi-site
+- HA
+- Enterprise Scale
+- API First
+- Automation
+
+哪些設計只適合 Homelab？
+哪些設計可擴展至 Enterprise？
+
+---
+
+Prompt 15：Consensus Reviewer（共識整理）
+
+你是一位 Architecture Review Chair。
+
+你已閱讀所有 Reviewer 的意見。
+
+請不要提出新的觀點。
+
+你的任務是整理 Consensus。
+
+將所有結論整理成：
+
+- Consensus — 所有 Reviewer 都同意的地方。
+- Major Disagreement — Reviewer 之間存在重大分歧。
+- High Risk — 即使存在分歧，也應優先處理的高風險問題。
+- Prototype Required — 不應繼續討論，而應立即建立 Prototype。
+- User Validation Required — 必須透過真正使用者驗證。
+
+Final Recommendation：
+
+請回答：
+
+- 是否批准開始開發（YES / NO）
+- 若 YES，開始前最重要三項修改
+- 若 NO，真正原因是什麼

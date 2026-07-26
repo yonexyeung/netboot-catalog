@@ -1,0 +1,32 @@
+schema_version: "1"
+id: vyos-rolling
+name: "VyOS Rolling"
+distribution: vyos
+homepage: https://vyos.io
+maintainer: community
+
+detection:
+  - file_exists: live/vmlinuz
+  - file_exists: live/initrd.img
+  - file_exists: live/filesystem.squashfs
+  - file_contains:
+      path: live/filesystem.packages
+      pattern: "vyos"
+
+assets:
+  kernel: live/vmlinuz
+  initrd: live/initrd.img
+  rootfs: live/filesystem.squashfs
+  rootfs_type: squashfs
+
+boot:
+  default: "boot=live components fetch={{rootfs_url}}"
+  variants:
+    serial: "boot=live components fetch={{rootfs_url}} console=ttyS0,115200n8"
+    debug: "boot=live components fetch={{rootfs_url}} debug"
+
+validation:
+  required_files:
+    - vmlinuz
+    - initrd.img
+    - filesystem.squashfs

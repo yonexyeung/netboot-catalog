@@ -1,0 +1,32 @@
+schema_version: "1"
+id: debian-live
+name: "Debian Live"
+distribution: debian
+homepage: https://www.debian.org
+maintainer: community
+
+detection:
+  - file_exists: live/vmlinuz
+  - file_exists: live/initrd.img
+  - file_exists: live/filesystem.squashfs
+  - file_contains:
+      path: .disk/info
+      pattern: "Debian"
+
+assets:
+  kernel: live/vmlinuz
+  initrd: live/initrd.img
+  rootfs: live/filesystem.squashfs
+  rootfs_type: squashfs
+
+boot:
+  default: "boot=live components fetch={{rootfs_url}}"
+  variants:
+    toram: "boot=live components toram fetch={{rootfs_url}}"
+    debug: "boot=live components fetch={{rootfs_url}} debug"
+
+validation:
+  required_files:
+    - vmlinuz
+    - initrd.img
+    - filesystem.squashfs

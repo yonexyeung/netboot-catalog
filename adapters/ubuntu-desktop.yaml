@@ -1,0 +1,33 @@
+schema_version: "1"
+id: ubuntu-desktop
+name: "Ubuntu Desktop Live"
+distribution: ubuntu
+homepage: https://ubuntu.com
+maintainer: community
+
+detection:
+  - file_exists: casper/vmlinuz
+  - file_exists: casper/initrd
+  - file_exists: casper/filesystem.squashfs
+  - file_contains:
+      path: .disk/info
+      pattern: "Ubuntu"
+
+assets:
+  kernel: casper/vmlinuz
+  initrd: casper/initrd
+  rootfs: casper/filesystem.squashfs
+  rootfs_type: squashfs
+
+boot:
+  default: "boot=casper netboot=url url={{rootfs_url}}"
+  variants:
+    safe_graphics: "boot=casper nomodeset netboot=url url={{rootfs_url}}"
+    toram: "boot=casper toram netboot=url url={{rootfs_url}}"
+    debug: "boot=casper netboot=url url={{rootfs_url}} debug systemd.log_level=debug"
+
+validation:
+  required_files:
+    - vmlinuz
+    - initrd
+    - filesystem.squashfs

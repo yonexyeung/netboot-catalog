@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# nbc — NetBoot Catalog CLI
+# Usage: nbc <command> [options]
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+export ADAPTERS_DIR="${ADAPTERS_DIR:-$PROJECT_ROOT/adapters}"
+export CATALOG_DIR="${CATALOG_DIR:-$PROJECT_ROOT/catalog}"
+export TEMPLATES_DIR="${TEMPLATES_DIR:-$PROJECT_ROOT/templates}"
+
+VERSION="0.1.0"
+
+usage() {
+    cat <<EOF
+nbc — NetBoot Catalog CLI v${VERSION}
+
+Usage: nbc <command> [options]
+
+Commands:
+  import <iso>          Import a Linux ISO into the catalog
+  generate [options]    Generate iPXE boot menu from catalog
+  list                  List all catalog entries
+  validate              Validate all adapters and catalog entries
+  delete <id>           Delete a catalog entry
+  status                Show catalog status
+
+Options:
+  --help, -h            Show this help
+  --version, -v         Show version
+
+Examples:
+  nbc import ubuntu-24.04-desktop-amd64.iso
+  nbc generate --output /srv/tftp/menu.ipxe --base-url http://10.0.0.1/catalog
+  nbc list
+EOF
+}
+
+cmd_import() {
+    exec "$SCRIPT_DIR/nbc-import.sh" "$@"
+}
+
+cmd_generate() {
+    exec "$SCRIPT_DIR/nbc-generate.sh" "$@"
+}
+
+cmd_list() {
+    if [[ ! -d "$CATALOG_DIR" ]] || [[ -z "$(ls -A "$CATALOG_DIR" 2>/dev/null)" ]]; then
+        echo "Catalog is empty."
+        return 0
+    fi
+    
+    printf "%-25s %-30s %-12s %s\n" "ID" "NAME" "DISTRO" "IMPORTED"
+    printf "%-25s %-30s %-12s %s\n" "---" "---" "---" "---"
+    
+    for recipe in "$CATALOG_DIR"/*/recipe.yaml; do
+        [[ -f "$recipe" ]] || continue
+        local id name distro imported
+        id=$(yq '.id' "$recipe")
+        name=$(yq '.name' "$recipe")
+        distro=$(yq '.distribution' "$recipe")
+        imported=$(yq '.imported_at' "$recipe" | cut -dT -f1)
+        printf "%-25s %-30s %-12s %s\n" "$id" "$name" "$distro" "$imported"
+    done
+}
+
+cmd_validate() {
+    local errors=0
+    
+    echo "Validating adapters..."
+    for adapter in "$ADAPTERS_DIR"/*.yaml; do
+        [[ -f "$adapter" ]] || continue
+        local name
+        name=$(basename "$adapter" .yaml)
+        
+        # Check required fields
+        local missing=""
+        for field in id name distribution assets.kernel assets.initrd assets.rootfs boot.default; do
+            if [[ $(yq ".$field // \"\"" "$adapter") == "" ]]; then
+                missing="$missing $field"
+            fi
+        done
+        
+        if [[ -n "$missing" ]]; then
+            echo "  FAIL  $name — missing fields:$missing"
+            ((errors++))
+        else
+            echo "  OK    $name"
+        fi
+    done
+    
+    echo ""
+    echo "Validating catalog entries..."
+    if [[ ! -d "$CATALOG_DIR" ]] || [[ -z "$(ls -A "$CATALOG_DIR" 2>/dev/null)" ]]; then
+        echo "  (no entries)"
+    else
+        for recipe in "$CATALOG_DIR"/*/recipe.yaml; do
+            [[ -f "$recipe" ]] || continue
+            local entry_dir id
+            entry_dir=$(dirname "$recipe")
+            id=$(yq '.id' "$recipe")
+            
+            # Check all assets exist
+            local kernel initrd rootfs
+            kernel=$(yq '.assets.kernel' "$recipe")
+            initrd=$(yq '.assets.initrd' "$recipe")
+            rootfs=$(yq '.assets.rootfs' "$recipe")
+            
+            local entry_ok=true
+            [[ -f "$entry_dir/$kernel" ]] || { echo "  FAIL  $id — missing $kernel"; entry_ok=false; }
+            [[ -f "$entry_dir/$initrd" ]] || { echo "  FAIL  $id — missing $initrd"; entry_ok=false; }
+            [[ -f "$entry_dir/$rootfs" ]] || { echo "  FAIL  $id — missing $rootfs"; entry_ok=false; }
+            
+            if $entry_ok; then
+                echo "  OK    $id"
+            else
+                ((errors++))
+            fi
+        done
+    fi
+    
+    echo ""
+    if [[ $errors -gt 0 ]]; then
+        echo "Validation completed with $errors error(s)."
+        return 1
+    else
+        echo "All checks passed."
+        return 0
+    fi
+}
+
+cmd_delete() {
+    local id="${1:-}"
+    [[ -n "$id" ]] || { echo "Usage: nbc delete <id>"; exit 1; }
+    
+    local entry_dir="$CATALOG_DIR/$id"
+    if [[ ! -d "$entry_dir" ]]; then
+        echo "Entry not found: $id"
+        exit 1
+    fi
+    
+    rm -rf "$entry_dir"
+    echo "Deleted: $id"
+}
+
+cmd_status() {
+    echo "NetBoot Catalog v${VERSION}"
+    echo ""
+    echo "Adapters:  $(find "$ADAPTERS_DIR" -name '*.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+    echo "Entries:   $(find "$CATALOG_DIR" -name 'recipe.yaml' 2>/dev/null | wc -l | tr -d ' ')"
+    echo ""
+    echo "Paths:"
+    echo "  Adapters: $ADAPTERS_DIR"
+    echo "  Catalog:  $CATALOG_DIR"
+}
+
+# --- Main ---
+case "${1:-}" in
+    import)     shift; cmd_import "$@" ;;
+    generate)   shift; cmd_generate "$@" ;;
+    list)       shift; cmd_list "$@" ;;
+    validate)   shift; cmd_validate "$@" ;;
+    delete)     shift; cmd_delete "$@" ;;
+    status)     shift; cmd_status "$@" ;;
+    --version|-v) echo "nbc v${VERSION}" ;;
+    --help|-h|"") usage ;;
+    *)          echo "Unknown command: $1"; echo ""; usage; exit 1 ;;
+esac

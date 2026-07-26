@@ -1,0 +1,21 @@
+# Catalog (generated data — rebuild from ISOs)
+/catalog/
+
+# Deprecated files (pending deletion)
+/_deprecated/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ISOs (large files, don't commit)
+*.iso
+
+# Logs
+*.log

@@ -1,0 +1,49 @@
+# NetBoot Catalog — Docker Appliance
+# Provides: nbc CLI + dnsmasq (proxyDHCP/TFTP) + nginx (HTTP) + iPXE binaries
+
+FROM debian:bookworm-slim
+
+ARG IPXE_VERSION=1.21.1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dnsmasq \
+    nginx-light \
+    inotify-tools \
+    curl \
+    ca-certificates \
+    coreutils \
+    mount \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install yq
+RUN curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64" \
+    -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+# Download iPXE binaries
+RUN mkdir -p /srv/tftp && \
+    curl -fsSL "https://boot.ipxe.org/undionly.kpxe" -o /srv/tftp/undionly.kpxe && \
+    curl -fsSL "https://boot.ipxe.org/ipxe.efi" -o /srv/tftp/ipxe.efi
+
+# Copy project files
+COPY scripts/ /opt/nbc/scripts/
+COPY adapters/ /opt/nbc/adapters/
+COPY templates/ /opt/nbc/templates/
+COPY docker/entrypoint.sh /opt/nbc/entrypoint.sh
+COPY docker/dnsmasq.conf /etc/dnsmasq.d/nbc.conf
+COPY docker/nginx.conf /etc/nginx/sites-enabled/default
+
+RUN chmod +x /opt/nbc/scripts/* /opt/nbc/entrypoint.sh && \
+    ln -sf /opt/nbc/scripts/nbc /usr/local/bin/nbc
+
+# Directories
+RUN mkdir -p /srv/import /srv/catalog /srv/tftp
+
+ENV ADAPTERS_DIR=/opt/nbc/adapters
+ENV CATALOG_DIR=/srv/catalog
+ENV NBC_BASE_URL=http://0.0.0.0/catalog
+
+EXPOSE 67/udp 69/udp 80/tcp 4011/udp
+
+VOLUME ["/srv/import", "/srv/catalog"]
+
+ENTRYPOINT ["/opt/nbc/entrypoint.sh"]

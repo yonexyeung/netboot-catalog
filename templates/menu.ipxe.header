@@ -1,0 +1,9 @@
+#!ipxe
+# NetBoot Catalog — iPXE Boot Menu
+# Auto-generated. Do not edit manually.
+
+set menu-timeout 30000
+set menu-default exit
+
+:start
+menu NetBoot Catalog
