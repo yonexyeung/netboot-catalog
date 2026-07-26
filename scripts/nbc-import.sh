@@ -131,11 +131,23 @@ detect_adapter() {
 }
 
 # Find matching adapter for mounted ISO
+# Tries adapters with higher priority first, then by detection rule count (more specific first)
 find_adapter() {
     local mount_point="$1"
     
-    for adapter_file in "$ADAPTERS_DIR"/*.yaml; do
-        [[ -f "$adapter_file" ]] || continue
+    # Sort adapters: by priority (higher first), then by detection rule count (more = more specific)
+    local sorted_adapters
+    sorted_adapters=$(
+        for f in "$ADAPTERS_DIR"/*.yaml; do
+            [[ -f "$f" ]] || continue
+            local priority count
+            priority=$(yq '.priority // 0' "$f" 2>/dev/null || echo 0)
+            count=$(yq '.detection | length' "$f")
+            echo "$priority $count $f"
+        done | sort -rn -k1 -k2 | awk '{print $3}'
+    )
+    
+    for adapter_file in $sorted_adapters; do
         if detect_adapter "$adapter_file" "$mount_point"; then
             echo "$adapter_file"
             return 0
@@ -219,7 +231,7 @@ generate_recipe() {
     
     # Get variants
     local variants_yaml=""
-    if [[ $(yq '.boot.variants // empty' "$adapter_file") != "" ]]; then
+    if yq -e '.boot.variants' "$adapter_file" >/dev/null 2>&1; then
         variants_yaml=$(yq '.boot.variants' "$adapter_file")
     fi
     

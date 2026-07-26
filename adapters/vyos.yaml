@@ -4,6 +4,7 @@ name: "VyOS Rolling"
 distribution: vyos
 homepage: https://vyos.io
 maintainer: community
+priority: 10
 
 # VyOS uses Debian live-boot framework.
 # Distinguished from plain Debian by presence of vyos-specific files.
