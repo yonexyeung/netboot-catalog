@@ -170,6 +170,15 @@ else
     CT_NET_IP="ip=${STATIC_IP},gw=${STATIC_GW}"
 fi
 
+# --- Root Password ---
+CT_PASSWORD=$(whiptail --title "Root Password" --passwordbox "Set root password for container:" 8 50 3>&1 1>&2 2>&3) || exit 0
+if [[ -z "$CT_PASSWORD" ]]; then
+    CT_PASSWORD=$(openssl rand -base64 12)
+    GENERATED_PW=true
+else
+    GENERATED_PW=false
+fi
+
 # --- Build net string ---
 NET_STR="name=eth0,bridge=${CT_BRIDGE}"
 [[ -n "$CT_VLAN" ]] && NET_STR="${NET_STR},tag=${CT_VLAN}"
@@ -208,6 +217,7 @@ msg_ok "Template ready"
 msg_info "Creating LXC ${CT_ID}"
 pct create "$CT_ID" "$TPL_PATH" \
     --hostname "$CT_HOSTNAME" \
+    --password "$CT_PASSWORD" \
     --cores "$CT_CPU" \
     --memory "$CT_RAM" \
     --rootfs "${CT_STORAGE}:${CT_DISK}" \
@@ -251,14 +261,15 @@ pct exec "$CT_ID" -- bash -c '
 msg_ok "Docker installed"
 
 # Step 6: Deploy NetBoot Catalog
-msg_info "Deploying ${APP}"
+msg_info "Deploying ${APP} (building Docker image — may take 2-5 min)"
 pct exec "$CT_ID" -- bash -c "
-    git clone ${APP_REPO} /opt/netboot-catalog >/dev/null 2>&1
+    git clone ${APP_REPO} /opt/netboot-catalog 2>&1 | tail -1
     cd /opt/netboot-catalog
-    docker compose build >/dev/null 2>&1
+    echo '  Building Docker image...'
+    docker compose build 2>&1 | grep -E '(Step|Successfully|DONE)' || true
     mkdir -p /srv/import /srv/catalog
-    docker compose up -d >/dev/null 2>&1
-" >/dev/null 2>&1
+    docker compose up -d 2>&1 | tail -2
+"
 msg_ok "${APP} deployed"
 
 # Step 7: Get IP
@@ -273,6 +284,9 @@ echo -e "${GN}══════════════════════
 echo ""
 echo -e "  Container:     ${GN}${CT_ID}${NC} (${CT_HOSTNAME})"
 echo -e "  IP Address:    ${GN}${CT_IP}${NC}"
+if $GENERATED_PW; then
+    echo -e "  Root Password: ${YW}${CT_PASSWORD}${NC} (auto-generated)"
+fi
 echo ""
 echo -e "  ${BL}Health:${NC}  curl http://${CT_IP}/health"
 echo -e "  ${BL}Menu:${NC}    curl http://${CT_IP}/tftp/menu.ipxe"
