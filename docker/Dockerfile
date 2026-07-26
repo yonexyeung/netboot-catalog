@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dnsmasq \
     nginx-light \
     inotify-tools \
+    iproute2 \
+    libarchive-tools \
     curl \
     ca-certificates \
     coreutils \
@@ -40,7 +42,7 @@ RUN mkdir -p /srv/import /srv/catalog /srv/tftp
 
 ENV ADAPTERS_DIR=/opt/nbc/adapters
 ENV CATALOG_DIR=/srv/catalog
-ENV NBC_BASE_URL=http://0.0.0.0/catalog
+# NBC_SERVER_IP and NBC_BASE_URL are auto-detected at runtime if not set
 
 EXPOSE 67/udp 69/udp 80/tcp 4011/udp
 

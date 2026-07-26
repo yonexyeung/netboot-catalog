@@ -6,10 +6,30 @@ set -euo pipefail
 
 log() { echo "[nbc-server] $*"; }
 
-# Generate initial menu if catalog has entries
+# Determine server IP
+if [[ -z "${NBC_SERVER_IP:-}" ]]; then
+    # Auto-detect: first non-loopback IPv4 address
+    NBC_SERVER_IP=$(ip -4 addr show scope global | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)
+    if [[ -z "$NBC_SERVER_IP" ]]; then
+        NBC_SERVER_IP="0.0.0.0"
+        log "WARNING: Could not detect server IP. Set NBC_SERVER_IP env var."
+    fi
+fi
+log "Server IP: $NBC_SERVER_IP"
+
+# Set base URL
+NBC_BASE_URL="${NBC_BASE_URL:-http://$NBC_SERVER_IP/catalog}"
+export NBC_BASE_URL
+
+# Patch dnsmasq config with actual IP
+sed -i "s/__NBC_SERVER_IP__/$NBC_SERVER_IP/g" /etc/dnsmasq.d/nbc.conf
+
+# Patch nginx to serve on correct IP (optional, default 0.0.0.0 is fine)
+
+# Generate iPXE menu if catalog has entries
 if [[ -n "$(ls -A /srv/catalog 2>/dev/null)" ]]; then
     log "Generating iPXE menu from existing catalog..."
-    nbc generate --output /srv/tftp/menu.ipxe --base-url "${NBC_BASE_URL:-http://\${next-server}/catalog}"
+    nbc generate --output /srv/tftp/menu.ipxe --base-url "$NBC_BASE_URL"
 fi
 
 # Start dnsmasq
