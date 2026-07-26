@@ -117,10 +117,14 @@ EOF
         expanded_args="${expanded_args//\{\{initrd_url\}\}/$entry_url/$initrd_file}"
         expanded_args="${expanded_args//\{\{rootfs_url\}\}/$entry_url/$rootfs_file}"
         
+        # Extract server IP/host from BASE_URL for TFTP
+        local server_host
+        server_host=$(echo "$BASE_URL" | sed 's|https\?://||; s|/.*||')
+        
         echo ""
         echo ":${id}"
-        echo "kernel tftp://\${next-server}/${tftp_prefix}/${kernel_file} ${expanded_args}"
-        echo "initrd tftp://\${next-server}/${tftp_prefix}/${initrd_file}"
+        echo "kernel tftp://${server_host}/${tftp_prefix}/${kernel_file} ${expanded_args}"
+        echo "initrd tftp://${server_host}/${tftp_prefix}/${initrd_file}"
         echo "boot"
         
         # Variants
@@ -139,8 +143,8 @@ EOF
                 
                 echo ""
                 echo ":${id}--${vkey}"
-                echo "kernel tftp://\${next-server}/${tftp_prefix}/${kernel_file} ${expanded_vargs}"
-                echo "initrd tftp://\${next-server}/${tftp_prefix}/${initrd_file}"
+                echo "kernel tftp://${server_host}/${tftp_prefix}/${kernel_file} ${expanded_vargs}"
+                echo "initrd tftp://${server_host}/${tftp_prefix}/${initrd_file}"
                 echo "boot"
             done
         fi
