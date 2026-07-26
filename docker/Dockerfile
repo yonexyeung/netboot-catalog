@@ -26,8 +26,8 @@ RUN mkdir -p /srv/tftp && \
     curl -fsSL "https://github.com/ipxe/ipxe/releases/latest/download/ipxeboot.tar.gz" \
       -o /tmp/ipxe.tar.gz && \
     tar -xzf /tmp/ipxe.tar.gz -C /tmp && \
-    cp /tmp/ipxeboot/bin/undionly.kpxe /srv/tftp/undionly.kpxe && \
-    cp /tmp/ipxeboot/bin-x86_64-efi/ipxe.efi /srv/tftp/ipxe.efi && \
+    cp /tmp/ipxeboot/undionly.kpxe /srv/tftp/undionly.kpxe && \
+    cp /tmp/ipxeboot/ipxe.efi /srv/tftp/ipxe.efi && \
     rm -rf /tmp/ipxe.tar.gz /tmp/ipxeboot
 
 # Copy project files
