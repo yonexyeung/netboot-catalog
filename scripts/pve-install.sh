@@ -170,6 +170,18 @@ else
     CT_NET_IP="ip=${STATIC_IP},gw=${STATIC_GW}"
 fi
 
+# --- Password ---
+CT_PASSWORD=""
+if whiptail --title "Root Password" --yesno "Set root password for container?\n\n(Select No to use SSH key only)" 10 50; then
+    CT_PASSWORD=$(whiptail --title "Root Password" --passwordbox "Enter root password:" 8 40 3>&1 1>&2 2>&3) || CT_PASSWORD=""
+fi
+
+# --- SSH Public Key ---
+CT_SSH_KEY=""
+if whiptail --title "SSH Public Key" --yesno "Add SSH public key?" 8 40; then
+    CT_SSH_KEY=$(whiptail --title "SSH Public Key" --inputbox "Paste your public key (ssh-ed25519 ... or ssh-rsa ...):" 10 70 "" 3>&1 1>&2 2>&3) || CT_SSH_KEY=""
+fi
+
 # --- Root Password ---
 CT_PASSWORD=$(whiptail --title "Root Password" --passwordbox "Set root password for container:" 8 50 3>&1 1>&2 2>&3) || exit 0
 if [[ -z "$CT_PASSWORD" ]]; then
@@ -215,20 +227,27 @@ msg_ok "Template ready"
 
 # Step 2: Create container
 msg_info "Creating LXC ${CT_ID}"
-pct create "$CT_ID" "$TPL_PATH" \
-    --hostname "$CT_HOSTNAME" \
-    --password "$CT_PASSWORD" \
-    --cores "$CT_CPU" \
-    --memory "$CT_RAM" \
-    --rootfs "${CT_STORAGE}:${CT_DISK}" \
-    --net0 "$NET_STR" \
-    --ostype debian \
-    --unprivileged 1 \
-    --features nesting=1,keyctl=1 \
-    --onboot 1 \
-    --tags "netboot;pxe;docker" \
-    --start 0 \
-    >/dev/null 2>&1
+PCT_OPTS=(
+    --hostname "$CT_HOSTNAME"
+    --cores "$CT_CPU"
+    --memory "$CT_RAM"
+    --rootfs "${CT_STORAGE}:${CT_DISK}"
+    --net0 "$NET_STR"
+    --ostype debian
+    --unprivileged 1
+    --features nesting=1,keyctl=1
+    --onboot 1
+    --tags "netboot;pxe;docker"
+    --start 0
+)
+[[ -n "$CT_PASSWORD" ]] && PCT_OPTS+=(--password "$CT_PASSWORD")
+if [[ -n "$CT_SSH_KEY" ]]; then
+    SSH_KEY_FILE=$(mktemp)
+    echo "$CT_SSH_KEY" > "$SSH_KEY_FILE"
+    PCT_OPTS+=(--ssh-public-keys "$SSH_KEY_FILE")
+fi
+pct create "$CT_ID" "$TPL_PATH" "${PCT_OPTS[@]}" >/dev/null 2>&1
+[[ -n "${SSH_KEY_FILE:-}" ]] && rm -f "$SSH_KEY_FILE"
 msg_ok "Container ${CT_ID} created"
 
 # Step 3: Start
