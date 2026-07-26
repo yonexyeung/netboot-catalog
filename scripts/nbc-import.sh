@@ -20,37 +20,70 @@ die() { err "$*"; exit 1; }
 # Check dependencies
 check_deps() {
     local missing=()
-    for cmd in mount umount cp sha256sum; do
+    for cmd in cp sha256sum; do
         command -v "$cmd" >/dev/null || missing+=("$cmd")
     done
     # yq is needed to parse YAML adapters
     if ! command -v yq >/dev/null; then
         missing+=("yq")
     fi
+    # Need at least one extraction method
+    if ! command -v mount >/dev/null && ! command -v bsdtar >/dev/null && ! command -v 7z >/dev/null; then
+        missing+=("mount or bsdtar or 7z")
+    fi
     if [[ ${#missing[@]} -gt 0 ]]; then
         die "Missing dependencies: ${missing[*]}"
     fi
 }
 
-# Mount ISO to temp directory
+# Mount or extract ISO to temp directory
+# Tries: mount → bsdtar → 7z (in order of preference)
 mount_iso() {
     local iso="$1"
     local mount_point
     mount_point=$(mktemp -d "/tmp/nbc-mount.XXXXXX")
     
-    if mount -o loop,ro "$iso" "$mount_point" 2>/dev/null; then
-        echo "$mount_point"
-    else
-        rmdir "$mount_point"
-        die "Failed to mount ISO: $iso (are you root?)"
+    # Method 1: mount -o loop (requires root + loop device support)
+    if command -v mount >/dev/null && mount -o loop,ro "$iso" "$mount_point" 2>/dev/null; then
+        echo "mount:$mount_point"
+        return 0
     fi
+    
+    # Method 2: bsdtar (no privileges needed)
+    if command -v bsdtar >/dev/null; then
+        log "  mount failed, falling back to bsdtar..."
+        if bsdtar -xf "$iso" -C "$mount_point" 2>/dev/null; then
+            echo "extract:$mount_point"
+            return 0
+        fi
+    fi
+    
+    # Method 3: 7z (no privileges needed)
+    if command -v 7z >/dev/null; then
+        log "  mount/bsdtar failed, falling back to 7z..."
+        if 7z x -o"$mount_point" "$iso" >/dev/null 2>&1; then
+            echo "extract:$mount_point"
+            return 0
+        fi
+    fi
+    
+    rmdir "$mount_point" 2>/dev/null || rm -rf "$mount_point"
+    die "Failed to mount/extract ISO: $iso (tried: mount, bsdtar, 7z)"
 }
 
 # Unmount and cleanup
 unmount_iso() {
-    local mount_point="$1"
-    umount "$mount_point" 2>/dev/null || true
-    rmdir "$mount_point" 2>/dev/null || true
+    local mount_info="$1"
+    local method="${mount_info%%:*}"
+    local path="${mount_info#*:}"
+    
+    if [[ "$method" == "mount" ]]; then
+        umount "$path" 2>/dev/null || true
+        rmdir "$path" 2>/dev/null || true
+    else
+        # Extracted — just remove
+        rm -rf "$path"
+    fi
 }
 
 # Run detection rules from an adapter YAML against a mount point
@@ -240,9 +273,10 @@ main() {
     
     # Step 1: Mount
     log "Mounting ISO..."
-    local mount_point
-    mount_point=$(mount_iso "$iso_file")
-    trap "unmount_iso '$mount_point'" EXIT
+    local mount_info
+    mount_info=$(mount_iso "$iso_file")
+    local mount_point="${mount_info#*:}"
+    trap "unmount_iso '$mount_info'" EXIT
     
     # Step 2: Detect
     log "Detecting distribution..."
