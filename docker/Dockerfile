@@ -22,12 +22,13 @@ RUN curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linu
     -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 
 # Download iPXE binaries from official GitHub releases
+# Use "legacy" binaries which don't enforce image signature verification
 RUN mkdir -p /srv/tftp && \
     curl -fsSL "https://github.com/ipxe/ipxe/releases/latest/download/ipxeboot.tar.gz" \
       -o /tmp/ipxe.tar.gz && \
     tar -xzf /tmp/ipxe.tar.gz -C /tmp && \
-    cp /tmp/ipxeboot/undionly.kpxe /srv/tftp/undionly.kpxe && \
-    cp /tmp/ipxeboot/ipxe.efi /srv/tftp/ipxe.efi && \
+    cp /tmp/ipxeboot/ipxe-legacy.pxe /srv/tftp/undionly.kpxe && \
+    cp /tmp/ipxeboot/ipxe-legacy.efi /srv/tftp/ipxe.efi && \
     rm -rf /tmp/ipxe.tar.gz /tmp/ipxeboot
 
 # Copy project files
