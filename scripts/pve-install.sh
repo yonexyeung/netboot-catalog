@@ -1,120 +1,199 @@
 #!/usr/bin/env bash
 # pve-install.sh — Proxmox VE Helper Script for NetBoot Catalog
-# 
-# Creates a Debian 13 LXC container with Docker, then deploys netboot-catalog.
-# Run this on your Proxmox VE host (not inside a container).
 #
-# Usage:
+# Creates a Debian 13 LXC with Docker and deploys netboot-catalog.
+# Features whiptail GUI with auto-detection of host storage, bridges, and VLANs.
+#
+# Run on Proxmox VE host:
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/yonexyeung/netboot-catalog/main/scripts/pve-install.sh)"
-#
-# Requirements:
-#   - Proxmox VE 8+
-#   - Internet access (to download CT template + Docker image)
-#   - Available CT ID
 
 set -euo pipefail
 
-# --- Defaults ---
-APP="NetBoot-Catalog"
-CT_ID="${CT_ID:-}"
-CT_HOSTNAME="${CT_HOSTNAME:-netboot-catalog}"
-CT_DISK="${CT_DISK:-8}"
-CT_RAM="${CT_RAM:-2048}"
-CT_CPU="${CT_CPU:-2}"
-CT_BRIDGE="${CT_BRIDGE:-vmbr0}"
-CT_STORAGE="${CT_STORAGE:-local-lvm}"
-CT_TEMPLATE_STORAGE="${CT_TEMPLATE_STORAGE:-local}"
+# --- Configuration ---
+APP="NetBoot Catalog"
+APP_REPO="https://github.com/yonexyeung/netboot-catalog.git"
 CT_OS="debian"
 CT_VERSION="13"
-NBC_REPO="https://github.com/yonexyeung/netboot-catalog.git"
 
 # --- Colors ---
 GN='\033[0;32m'
 YW='\033[0;33m'
 RD='\033[0;31m'
+BL='\033[0;34m'
 NC='\033[0m'
 
 info() { echo -e "${YW}[info]${NC} $*"; }
-ok()   { echo -e "${GN}[ok]${NC} $*"; }
-err()  { echo -e "${RD}[error]${NC} $*"; exit 1; }
+ok()   { echo -e "${GN}[✓]${NC} $*"; }
+err()  { echo -e "${RD}[✗]${NC} $*" >&2; exit 1; }
 
-# --- Pre-flight ---
-[[ -f /etc/pve/.version ]] || err "This script must be run on a Proxmox VE host."
-command -v pct >/dev/null || err "pct not found. Are you on a Proxmox host?"
+# --- Pre-flight checks ---
+[[ $EUID -eq 0 ]] || err "Must run as root"
+[[ -f /etc/pve/.version ]] || [[ -d /etc/pve ]] || err "This script must be run on a Proxmox VE host."
+command -v pct >/dev/null || err "pct not found."
+command -v whiptail >/dev/null || apt-get install -y whiptail >/dev/null 2>&1
 
-echo ""
-echo -e "${GN}╔══════════════════════════════════════════╗${NC}"
-echo -e "${GN}║       NetBoot Catalog Installer          ║${NC}"
-echo -e "${GN}║  Drop ISO. Network Boot. Open Source.    ║${NC}"
-echo -e "${GN}╚══════════════════════════════════════════╝${NC}"
-echo ""
+# --- Helper: get available storages ---
+get_storages() {
+    local type="$1" # "rootdir" or "images" or "vztmpl"
+    pvesm status --content "$type" 2>/dev/null | awk 'NR>1 && $2=="active" {print $1}' | sort
+}
 
-# --- Get next available CT ID ---
-if [[ -z "$CT_ID" ]]; then
-    CT_ID=$(pvesh get /cluster/nextid)
+# --- Helper: get available bridges ---
+get_bridges() {
+    ip -o link show type bridge 2>/dev/null | awk -F': ' '{print $2}' | sort
+}
+
+# --- Helper: whiptail menu from list ---
+select_from_list() {
+    local title="$1"
+    local prompt="$2"
+    shift 2
+    local items=("$@")
+    local menu_items=()
+
+    for item in "${items[@]}"; do
+        menu_items+=("$item" "" "OFF")
+    done
+    # Set first item ON
+    if [[ ${#menu_items[@]} -ge 3 ]]; then
+        menu_items[2]="ON"
+    fi
+
+    whiptail --title "$title" --radiolist "$prompt" 16 60 8 "${menu_items[@]}" 3>&1 1>&2 2>&3 || echo "${items[0]}"
+}
+
+# --- Header ---
+whiptail --title "NetBoot Catalog" --msgbox \
+"Drop ISO. Network Boot. Open Source.
+
+This script will create a Debian 13 LXC container with Docker
+and deploy NetBoot Catalog for PXE network booting.
+
+Requirements:
+  - Available storage for CT rootfs
+  - Available storage for CT templates
+  - Network bridge for PXE traffic" 16 60
+
+# --- Get next CT ID ---
+CT_ID=$(pvesh get /cluster/nextid)
+CT_ID=$(whiptail --title "Container ID" --inputbox "Enter CT ID:" 8 40 "$CT_ID" 3>&1 1>&2 2>&3) || exit
+
+# --- Hostname ---
+CT_HOSTNAME=$(whiptail --title "Hostname" --inputbox "Enter hostname:" 8 40 "netboot-catalog" 3>&1 1>&2 2>&3) || exit
+
+# --- Select rootfs storage ---
+ROOTFS_STORAGES=($(get_storages "rootdir"))
+if [[ ${#ROOTFS_STORAGES[@]} -eq 0 ]]; then
+    # Fallback: try images content type
+    ROOTFS_STORAGES=($(get_storages "images"))
 fi
-info "Container ID: $CT_ID"
-
-# --- Prompt for settings ---
-read -r -p "  Hostname [${CT_HOSTNAME}]: " input
-CT_HOSTNAME="${input:-$CT_HOSTNAME}"
-
-read -r -p "  Disk size GB [${CT_DISK}]: " input
-CT_DISK="${input:-$CT_DISK}"
-
-read -r -p "  RAM MB [${CT_RAM}]: " input
-CT_RAM="${input:-$CT_RAM}"
-
-read -r -p "  CPU cores [${CT_CPU}]: " input
-CT_CPU="${input:-$CT_CPU}"
-
-read -r -p "  Network bridge [${CT_BRIDGE}]: " input
-CT_BRIDGE="${input:-$CT_BRIDGE}"
-
-read -r -p "  Storage [${CT_STORAGE}]: " input
-CT_STORAGE="${input:-$CT_STORAGE}"
-
-echo ""
-info "Creating LXC: ID=$CT_ID, Host=$CT_HOSTNAME, Disk=${CT_DISK}G, RAM=${CT_RAM}MB, CPU=$CT_CPU"
-echo ""
-read -r -p "  Proceed? [Y/n]: " confirm
-if [[ "${confirm,,}" == "n" ]]; then
-    echo "Aborted."
-    exit 0
+if [[ ${#ROOTFS_STORAGES[@]} -eq 0 ]]; then
+    err "No active storage found for container rootfs"
 fi
+
+if [[ ${#ROOTFS_STORAGES[@]} -eq 1 ]]; then
+    CT_STORAGE="${ROOTFS_STORAGES[0]}"
+else
+    CT_STORAGE=$(select_from_list "Root Storage" "Select storage for container rootfs:" "${ROOTFS_STORAGES[@]}")
+fi
+
+# --- Select template storage ---
+TPL_STORAGES=($(get_storages "vztmpl"))
+if [[ ${#TPL_STORAGES[@]} -eq 0 ]]; then
+    err "No active storage found for CT templates (vztmpl)"
+fi
+
+if [[ ${#TPL_STORAGES[@]} -eq 1 ]]; then
+    CT_TPL_STORAGE="${TPL_STORAGES[0]}"
+else
+    CT_TPL_STORAGE=$(select_from_list "Template Storage" "Select storage for CT templates:" "${TPL_STORAGES[@]}")
+fi
+
+# --- Disk size ---
+CT_DISK=$(whiptail --title "Disk Size" --inputbox "Root disk size (GB):" 8 40 "8" 3>&1 1>&2 2>&3) || exit
+
+# --- RAM ---
+CT_RAM=$(whiptail --title "Memory" --inputbox "RAM (MB):" 8 40 "2048" 3>&1 1>&2 2>&3) || exit
+
+# --- CPU ---
+CT_CPU=$(whiptail --title "CPU Cores" --inputbox "CPU cores:" 8 40 "2" 3>&1 1>&2 2>&3) || exit
+
+# --- Select network bridge ---
+BRIDGES=($(get_bridges))
+if [[ ${#BRIDGES[@]} -eq 0 ]]; then
+    BRIDGES=("vmbr0")
+fi
+
+if [[ ${#BRIDGES[@]} -eq 1 ]]; then
+    CT_BRIDGE="${BRIDGES[0]}"
+else
+    CT_BRIDGE=$(select_from_list "Network Bridge" "Select bridge for PXE network:" "${BRIDGES[@]}")
+fi
+
+# --- VLAN tag (optional) ---
+CT_VLAN=$(whiptail --title "VLAN Tag" --inputbox "VLAN tag (leave empty for none):" 8 40 "" 3>&1 1>&2 2>&3) || CT_VLAN=""
+
+# --- IP config ---
+IP_MODE=$(whiptail --title "IP Configuration" --radiolist "Select IP mode:" 10 50 3 \
+    "dhcp" "DHCP (automatic)" "ON" \
+    "static" "Static IP" "OFF" \
+    3>&1 1>&2 2>&3) || IP_MODE="dhcp"
+
+CT_IP_CONFIG="ip=dhcp"
+if [[ "$IP_MODE" == "static" ]]; then
+    STATIC_IP=$(whiptail --title "Static IP" --inputbox "IP address (CIDR, e.g. 192.168.50.200/24):" 8 50 "" 3>&1 1>&2 2>&3) || exit
+    STATIC_GW=$(whiptail --title "Gateway" --inputbox "Gateway:" 8 50 "" 3>&1 1>&2 2>&3) || exit
+    CT_IP_CONFIG="ip=${STATIC_IP},gw=${STATIC_GW}"
+fi
+
+# --- Network string ---
+NET_CONFIG="name=eth0,bridge=${CT_BRIDGE}"
+if [[ -n "$CT_VLAN" ]]; then
+    NET_CONFIG="${NET_CONFIG},tag=${CT_VLAN}"
+fi
+
+# --- Confirmation ---
+SUMMARY="Container ID:   ${CT_ID}
+Hostname:       ${CT_HOSTNAME}
+Storage:        ${CT_STORAGE}
+Template Store: ${CT_TPL_STORAGE}
+Disk:           ${CT_DISK} GB
+RAM:            ${CT_RAM} MB
+CPU:            ${CT_CPU} cores
+Bridge:         ${CT_BRIDGE}
+VLAN:           ${CT_VLAN:-none}
+IP:             ${IP_MODE}
+"
+
+whiptail --title "Confirm Settings" --yesno "$SUMMARY\nProceed with installation?" 18 50 || exit
 
 # --- Download CT template ---
 info "Downloading Debian ${CT_VERSION} template..."
-TEMPLATE="debian-${CT_VERSION}-standard_${CT_VERSION}.0-1_amd64.tar.zst"
-
-# Check if template already exists
-if ! pveam list "$CT_TEMPLATE_STORAGE" | grep -q "$CT_OS-${CT_VERSION}"; then
-    pveam update >/dev/null 2>&1
-    TEMPLATE_FULL=$(pveam available --section system | grep "debian-${CT_VERSION}" | tail -1 | awk '{print $2}')
-    if [[ -z "$TEMPLATE_FULL" ]]; then
-        err "Debian ${CT_VERSION} template not found. Run: pveam update"
-    fi
-    pveam download "$CT_TEMPLATE_STORAGE" "$TEMPLATE_FULL" >/dev/null 2>&1
-    ok "Template downloaded: $TEMPLATE_FULL"
-else
-    TEMPLATE_FULL=$(pveam list "$CT_TEMPLATE_STORAGE" | grep "debian-${CT_VERSION}" | tail -1 | awk '{print $1}')
-    ok "Template already available: $TEMPLATE_FULL"
+pveam update >/dev/null 2>&1 || true
+TEMPLATE_FULL=$(pveam available --section system | grep "debian-${CT_VERSION}" | tail -1 | awk '{print $2}')
+if [[ -z "$TEMPLATE_FULL" ]]; then
+    err "Debian ${CT_VERSION} template not found in available list."
 fi
 
+if ! pveam list "$CT_TPL_STORAGE" | grep -q "$(basename "$TEMPLATE_FULL")"; then
+    pveam download "$CT_TPL_STORAGE" "$TEMPLATE_FULL"
+fi
+TEMPLATE_PATH="${CT_TPL_STORAGE}:vztmpl/$(basename "$TEMPLATE_FULL")"
+ok "Template ready: $TEMPLATE_PATH"
+
 # --- Create container ---
-info "Creating container..."
-pct create "$CT_ID" "$TEMPLATE_FULL" \
+info "Creating container ${CT_ID}..."
+pct create "$CT_ID" "$TEMPLATE_PATH" \
     --hostname "$CT_HOSTNAME" \
     --cores "$CT_CPU" \
     --memory "$CT_RAM" \
     --rootfs "${CT_STORAGE}:${CT_DISK}" \
-    --net0 "name=eth0,bridge=${CT_BRIDGE},ip=dhcp" \
+    --net0 "${NET_CONFIG},${CT_IP_CONFIG}" \
     --ostype debian \
     --unprivileged 1 \
     --features nesting=1,keyctl=1 \
     --onboot 1 \
-    --start 0 \
-    >/dev/null 2>&1
+    --start 0
 ok "Container $CT_ID created"
 
 # --- Start container ---
@@ -133,49 +212,53 @@ for i in $(seq 1 30); do
 done
 ok "Network ready"
 
-# --- Install Docker inside container ---
-info "Installing Docker..."
+# --- Install Docker ---
+info "Installing Docker (this may take 1-2 minutes)..."
 pct exec "$CT_ID" -- bash -c '
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq
-    apt-get install -y -qq ca-certificates curl gnupg git
+    apt-get install -y -qq ca-certificates curl gnupg git >/dev/null 2>&1
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
     apt-get update -qq
-    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
-' >/dev/null 2>&1
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin >/dev/null 2>&1
+'
 ok "Docker installed"
 
-# --- Clone and deploy NetBoot Catalog ---
+# --- Deploy NetBoot Catalog ---
 info "Deploying NetBoot Catalog..."
 pct exec "$CT_ID" -- bash -c "
-    git clone ${NBC_REPO} /opt/netboot-catalog
+    git clone ${APP_REPO} /opt/netboot-catalog >/dev/null 2>&1
     cd /opt/netboot-catalog
-    docker compose build
+    docker compose build >/dev/null 2>&1
     mkdir -p /srv/import /srv/catalog
-    docker compose up -d
-" >/dev/null 2>&1
+    docker compose up -d >/dev/null 2>&1
+"
 ok "NetBoot Catalog deployed"
 
 # --- Get container IP ---
-CT_IP=$(pct exec "$CT_ID" -- bash -c "ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'" 2>/dev/null || echo "DHCP")
+sleep 3
+CT_IP=$(pct exec "$CT_ID" -- bash -c "ip -4 addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}'" || echo "unknown")
 
 # --- Done ---
+clear
 echo ""
-echo -e "${GN}╔══════════════════════════════════════════╗${NC}"
-echo -e "${GN}║    NetBoot Catalog — Ready!              ║${NC}"
-echo -e "${GN}╚══════════════════════════════════════════╝${NC}"
+echo -e "${GN}╔══════════════════════════════════════════════╗${NC}"
+echo -e "${GN}║     NetBoot Catalog — Installation Complete  ║${NC}"
+echo -e "${GN}╚══════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "  Container ID:  ${GN}${CT_ID}${NC}"
-echo -e "  Hostname:      ${GN}${CT_HOSTNAME}${NC}"
-echo -e "  IP Address:    ${GN}${CT_IP}${NC}"
-echo -e "  Health Check:  ${GN}http://${CT_IP}/health${NC}"
-echo -e "  iPXE Menu:     ${GN}http://${CT_IP}/tftp/menu.ipxe${NC}"
+echo -e "  Container ID:   ${GN}${CT_ID}${NC}"
+echo -e "  Hostname:       ${GN}${CT_HOSTNAME}${NC}"
+echo -e "  IP Address:     ${GN}${CT_IP}${NC}"
 echo ""
-echo -e "  Import ISOs:   ${YW}pct exec ${CT_ID} -- nbc import /srv/import/<file>.iso${NC}"
-echo -e "  List Catalog:  ${YW}pct exec ${CT_ID} -- nbc list${NC}"
-echo -e "  View Logs:     ${YW}pct exec ${CT_ID} -- docker compose -f /opt/netboot-catalog/docker-compose.yml logs${NC}"
+echo -e "  ${BL}Health Check:${NC}   curl http://${CT_IP}/health"
+echo -e "  ${BL}iPXE Menu:${NC}      http://${CT_IP}/tftp/menu.ipxe"
+echo ""
+echo -e "  ${YW}Import ISO:${NC}     pct exec ${CT_ID} -- nbc import /srv/import/<file>.iso"
+echo -e "  ${YW}List Catalog:${NC}   pct exec ${CT_ID} -- nbc list"
+echo -e "  ${YW}View Logs:${NC}      pct exec ${CT_ID} -- docker logs nbc"
 echo ""
 echo -e "  Drop ISOs into ${YW}/srv/import/${NC} inside the container for auto-import."
 echo ""
