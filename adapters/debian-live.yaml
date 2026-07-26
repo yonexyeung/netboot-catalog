@@ -20,10 +20,10 @@ assets:
   rootfs_type: squashfs
 
 boot:
-  default: "boot=live components fetch={{rootfs_url}}"
+  default: "boot=live components ip=dhcp fetch={{rootfs_url}}"
   variants:
-    toram: "boot=live components toram fetch={{rootfs_url}}"
-    debug: "boot=live components fetch={{rootfs_url}} debug"
+    toram: "boot=live components ip=dhcp toram fetch={{rootfs_url}}"
+    debug: "boot=live components ip=dhcp fetch={{rootfs_url}} debug"
 
 validation:
   required_files:
