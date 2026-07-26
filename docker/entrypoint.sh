@@ -21,8 +21,13 @@ log "Server IP: $NBC_SERVER_IP"
 NBC_BASE_URL="${NBC_BASE_URL:-http://$NBC_SERVER_IP/catalog}"
 export NBC_BASE_URL
 
-# Patch dnsmasq config with actual IP
+# Patch dnsmasq config with actual IP and subnet
 sed -i "s/__NBC_SERVER_IP__/$NBC_SERVER_IP/g" /etc/dnsmasq.d/nbc.conf
+
+# Determine subnet (e.g. 192.168.50.0 from 192.168.50.160)
+NBC_SUBNET="${NBC_SUBNET:-$(echo "$NBC_SERVER_IP" | sed 's/\.[0-9]*$/.0/')}"
+sed -i "s/__NBC_SUBNET__/$NBC_SUBNET/g" /etc/dnsmasq.d/nbc.conf
+log "Subnet: $NBC_SUBNET"
 
 # Patch nginx to serve on correct IP (optional, default 0.0.0.0 is fine)
 
