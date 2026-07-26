@@ -9,6 +9,6 @@ services:
       - NET_ADMIN
       - SYS_ADMIN
     volumes:
-      - ./catalog:/srv/catalog:ro
-      - ./import:/srv/import
+      - /srv/catalog:/srv/catalog
+      - /srv/import:/srv/import
     restart: unless-stopped
