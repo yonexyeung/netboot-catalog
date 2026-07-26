@@ -52,8 +52,8 @@ NC='\033[0m'
 
 # --- Test helpers ---
 log()  { echo -e "${YELLOW}[test]${NC} $*"; }
-pass() { echo -e "${GREEN}[PASS]${NC} $*"; ((PASSED++)); ((TOTAL++)); }
-fail() { echo -e "${RED}[FAIL]${NC} $*"; ((FAILED++)); ((TOTAL++)); }
+pass() { echo -e "${GREEN}[PASS]${NC} $*"; PASSED=$((PASSED+1)); TOTAL=$((TOTAL+1)); }
+fail() { echo -e "${RED}[FAIL]${NC} $*"; FAILED=$((FAILED+1)); TOTAL=$((TOTAL+1)); }
 
 assert_file_exists() {
     if [[ -f "$1" ]]; then
