@@ -61,10 +61,24 @@ import_iso() {
     local filepath="$1"
     local filename
     filename=$(basename "$filepath")
+    local lockfile="/var/tmp/nbc-import.lock"
+    
     # Skip if already imported
     if grep -qxF "$filename" "$IMPORT_TRACKER" 2>/dev/null; then
         return
     fi
+    
+    # Lock to prevent concurrent import of same file
+    if ! mkdir "$lockfile" 2>/dev/null; then
+        return  # Another import in progress
+    fi
+    trap "rmdir '$lockfile' 2>/dev/null" RETURN
+    
+    # Double-check after acquiring lock
+    if grep -qxF "$filename" "$IMPORT_TRACKER" 2>/dev/null; then
+        return
+    fi
+    
     log "New ISO detected: $filename"
     if nbc import "$filepath"; then
         echo "$filename" >> "$IMPORT_TRACKER"
