@@ -28,14 +28,13 @@ log "Subnet: $NBC_SUBNET"
 
 # Patch nginx to serve on correct IP (optional, default 0.0.0.0 is fine)
 
+# Symlink catalog into TFTP root (always, even if empty now — imports happen later)
+ln -sfn /srv/catalog /srv/tftp/catalog
+
 # Generate iPXE menu if catalog has entries
 if [[ -n "$(ls -A /srv/catalog 2>/dev/null)" ]]; then
     log "Generating iPXE menu from existing catalog..."
     nbc generate --output /srv/tftp/menu.ipxe --base-url "$NBC_BASE_URL"
-    
-    # Symlink catalog entries into TFTP root for kernel/initrd delivery
-    # (iPXE image trust blocks HTTP but allows TFTP)
-    ln -sfn /srv/catalog /srv/tftp/catalog
 fi
 
 # Start dnsmasq
