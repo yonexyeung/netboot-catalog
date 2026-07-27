@@ -37,7 +37,8 @@ check_deps() {
 }
 
 # Mount or extract ISO to temp directory
-# Tries: mount → bsdtar → 7z (in order of preference)
+# Tries: mount → bsdtar (selective) → 7z
+# For bsdtar/7z: first extracts only detection files, then assets on demand
 mount_iso() {
     local iso="$1"
     local mount_point
@@ -50,9 +51,21 @@ mount_iso() {
         return 0
     fi
     
-    # Method 2: bsdtar (no privileges needed)
+    # Method 2: bsdtar selective extraction
+    # First extract small detection files (.disk/, isolinux/, live/ metadata)
     if command -v bsdtar >/dev/null; then
-        log "  mount failed, falling back to bsdtar..."
+        log "  mount failed, falling back to bsdtar (selective)..."
+        # Extract detection-related files (small, for adapter matching)
+        bsdtar -xf "$iso" -C "$mount_point" \
+            '.disk' 'isolinux/menu.cfg' 'isolinux/isolinux.cfg' \
+            'live/filesystem.packages' \
+            2>/dev/null || true
+        # Check if we got something useful
+        if [[ -d "$mount_point/.disk" ]] || [[ -d "$mount_point/isolinux" ]] || [[ -d "$mount_point/live" ]]; then
+            echo "bsdtar:$mount_point:$iso"
+            return 0
+        fi
+        # Fallback: extract everything (for unknown ISO structures)
         if bsdtar -xf "$iso" -C "$mount_point" 2>/dev/null; then
             echo "extract:$mount_point"
             return 0
@@ -61,14 +74,14 @@ mount_iso() {
     
     # Method 3: 7z (no privileges needed)
     if command -v 7z >/dev/null; then
-        log "  mount/bsdtar failed, falling back to 7z..."
+        log "  bsdtar failed, falling back to 7z..."
         if 7z x -o"$mount_point" "$iso" >/dev/null 2>&1; then
             echo "extract:$mount_point"
             return 0
         fi
     fi
     
-    rmdir "$mount_point" 2>/dev/null || rm -rf "$mount_point"
+    rm -rf "$mount_point"
     die "Failed to mount/extract ISO: $iso (tried: mount, bsdtar, 7z)"
 }
 
@@ -76,7 +89,8 @@ mount_iso() {
 unmount_iso() {
     local mount_info="$1"
     local method="${mount_info%%:*}"
-    local path="${mount_info#*:}"
+    local rest="${mount_info#*:}"
+    local path="${rest%%:*}"
     
     if [[ "$method" == "mount" ]]; then
         umount "$path" 2>/dev/null || true
@@ -157,11 +171,13 @@ find_adapter() {
     return 1
 }
 
-# Extract assets from mounted ISO using adapter definition
+# Extract assets from mounted/extracted ISO using adapter definition
+# For bsdtar selective mode: extracts specific files from ISO directly
 extract_assets() {
     local adapter_file="$1"
     local mount_point="$2"
     local dest_dir="$3"
+    local mount_info="${4:-}"
     
     mkdir -p "$dest_dir"
     
@@ -170,7 +186,47 @@ extract_assets() {
     initrd=$(yq '.assets.initrd' "$adapter_file")
     rootfs=$(yq '.assets.rootfs' "$adapter_file")
     
-    # Validate source files exist
+    local method="${mount_info%%:*}"
+    
+    # For bsdtar selective mode: extract needed files directly from ISO
+    if [[ "$method" == "bsdtar" ]]; then
+        local iso_file="${mount_info##*:}"
+        
+        log "  Extracting kernel: $kernel"
+        bsdtar -xf "$iso_file" -C "$dest_dir" "$kernel" 2>/dev/null || die "Kernel not found: $kernel"
+        # Flatten: move from subdir to dest root
+        if [[ -f "$dest_dir/$kernel" ]] && [[ "$(dirname "$kernel")" != "." ]]; then
+            mv "$dest_dir/$kernel" "$dest_dir/$(basename "$kernel")"
+            rmdir "$dest_dir/$(dirname "$kernel")" 2>/dev/null || rm -rf "$dest_dir/$(dirname "$kernel")"
+        fi
+        
+        log "  Extracting initrd: $initrd"
+        bsdtar -xf "$iso_file" -C "$dest_dir" "$initrd" 2>/dev/null || die "Initrd not found: $initrd"
+        if [[ -f "$dest_dir/$initrd" ]] && [[ "$(dirname "$initrd")" != "." ]]; then
+            mv "$dest_dir/$initrd" "$dest_dir/$(basename "$initrd")"
+            rmdir "$dest_dir/$(dirname "$initrd")" 2>/dev/null || rm -rf "$dest_dir/$(dirname "$initrd")"
+        fi
+        
+        # Rootfs
+        local rootfs_optional
+        rootfs_optional=$(yq '.assets.rootfs_optional // "false"' "$adapter_file")
+        if [[ -n "$rootfs" ]] && [[ "$rootfs" != "null" ]]; then
+            log "  Extracting rootfs: $rootfs"
+            if bsdtar -xf "$iso_file" -C "$dest_dir" "$rootfs" 2>/dev/null; then
+                if [[ -f "$dest_dir/$rootfs" ]] && [[ "$(dirname "$rootfs")" != "." ]]; then
+                    mv "$dest_dir/$rootfs" "$dest_dir/$(basename "$rootfs")"
+                    rmdir "$dest_dir/$(dirname "$rootfs")" 2>/dev/null || rm -rf "$dest_dir/$(dirname "$rootfs")"
+                fi
+            elif [[ "$rootfs_optional" != "true" ]]; then
+                die "Rootfs not found: $rootfs"
+            else
+                log "  Rootfs not found (optional): $rootfs"
+            fi
+        fi
+        return 0
+    fi
+    
+    # For mount / full-extract mode: copy from mount point
     [[ -f "$mount_point/$kernel" ]] || die "Kernel not found: $kernel"
     [[ -f "$mount_point/$initrd" ]] || die "Initrd not found: $initrd"
     
@@ -200,7 +256,8 @@ extract_assets() {
     fi
 }
 
-# Copy original ISO into catalog entry (for adapters with keep_iso: true)
+# Link original ISO into catalog entry (for adapters with keep_iso: true)
+# Uses symlink to avoid duplicating large ISO files
 copy_iso_if_needed() {
     local adapter_file="$1"
     local iso_file="$2"
@@ -209,8 +266,11 @@ copy_iso_if_needed() {
     local keep_iso
     keep_iso=$(yq '.assets.keep_iso // "false"' "$adapter_file" 2>/dev/null || echo "false")
     if [[ "$keep_iso" == "true" ]]; then
-        log "  Copying ISO to catalog (needed for url= boot method)..."
-        cp "$iso_file" "$dest_dir/$(basename "$iso_file")"
+        local iso_basename
+        iso_basename=$(basename "$iso_file")
+        # Symlink to original ISO (saves disk space)
+        log "  Linking ISO to catalog (needed for url= boot method)..."
+        ln -sf "$iso_file" "$dest_dir/$iso_basename"
     fi
 }
 
@@ -311,7 +371,10 @@ main() {
     log "Mounting ISO..."
     local mount_info
     mount_info=$(mount_iso "$iso_file")
-    local mount_point="${mount_info#*:}"
+    # Extract mount_point: for "mount:/path" or "extract:/path" → /path
+    # For "bsdtar:/path:/iso" → /path
+    local mount_point
+    mount_point=$(echo "$mount_info" | cut -d: -f2)
     trap "unmount_iso '$mount_info'" EXIT
     
     # Step 2: Detect
@@ -337,7 +400,7 @@ main() {
     temp_dir=$(mktemp -d "${NBC_TMP_DIR:-/var/tmp}/nbc-extract.XXXXXX")
     
     log "Extracting assets..."
-    extract_assets "$adapter_file" "$mount_point" "$temp_dir"
+    extract_assets "$adapter_file" "$mount_point" "$temp_dir" "$mount_info"
     copy_iso_if_needed "$adapter_file" "$iso_file" "$temp_dir"
     
     # Step 5: Generate recipe
