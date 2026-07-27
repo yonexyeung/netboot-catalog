@@ -171,24 +171,24 @@ else
 fi
 
 # --- Password ---
-CT_PASSWORD=""
-if whiptail --title "Root Password" --yesno "Set root password for container?\n\n(Select No to use SSH key only)" 10 50; then
-    CT_PASSWORD=$(whiptail --title "Root Password" --passwordbox "Enter root password:" 8 40 3>&1 1>&2 2>&3) || CT_PASSWORD=""
-fi
-
-# --- SSH Public Key ---
-CT_SSH_KEY=""
-if whiptail --title "SSH Public Key" --yesno "Add SSH public key?" 8 40; then
-    CT_SSH_KEY=$(whiptail --title "SSH Public Key" --inputbox "Paste your public key (ssh-ed25519 ... or ssh-rsa ...):" 10 70 "" 3>&1 1>&2 2>&3) || CT_SSH_KEY=""
-fi
-
-# --- Root Password ---
 CT_PASSWORD=$(whiptail --title "Root Password" --passwordbox "Set root password for container:" 8 50 3>&1 1>&2 2>&3) || exit 0
 if [[ -z "$CT_PASSWORD" ]]; then
     CT_PASSWORD=$(openssl rand -base64 12)
     GENERATED_PW=true
 else
     GENERATED_PW=false
+fi
+
+# --- SSH Public Key ---
+CT_SSH_KEY=""
+if whiptail --title "SSH Public Key" --yesno "Add SSH public key for root access?" 8 50; then
+    CT_SSH_KEY=$(whiptail --title "SSH Public Key" --inputbox "Paste your public key:" 10 70 "" 3>&1 1>&2 2>&3) || CT_SSH_KEY=""
+fi
+
+# --- SSH Service ---
+ENABLE_SSH=false
+if whiptail --title "SSH Service" --yesno "Enable SSH service in container?\n\n(Allows remote access via ssh root@<IP>)" 10 50; then
+    ENABLE_SSH=true
 fi
 
 # --- Build net string ---
@@ -279,7 +279,26 @@ pct exec "$CT_ID" -- bash -c '
 ' >/dev/null 2>&1
 msg_ok "Docker installed"
 
-# Step 6: Deploy NetBoot Catalog
+# Step 6: SSH setup
+if $ENABLE_SSH; then
+    msg_info "Enabling SSH service"
+    pct exec "$CT_ID" -- bash -c '
+        apt-get install -y -qq openssh-server >/dev/null 2>&1
+        sed -i "s/#PermitRootLogin.*/PermitRootLogin yes/" /etc/ssh/sshd_config
+        systemctl enable ssh >/dev/null 2>&1
+        systemctl start ssh
+    ' >/dev/null 2>&1
+    if [[ -n "$CT_SSH_KEY" ]]; then
+        pct exec "$CT_ID" -- bash -c "
+            mkdir -p /root/.ssh && chmod 700 /root/.ssh
+            echo '${CT_SSH_KEY}' >> /root/.ssh/authorized_keys
+            chmod 600 /root/.ssh/authorized_keys
+        " >/dev/null 2>&1
+    fi
+    msg_ok "SSH enabled"
+fi
+
+# Step 7: Deploy NetBoot Catalog
 msg_info "Deploying ${APP} (building Docker image — may take 2-5 min)"
 pct exec "$CT_ID" -- bash -c "
     git clone ${APP_REPO} /opt/netboot-catalog 2>&1 | tail -1
@@ -306,13 +325,16 @@ echo -e "  IP Address:    ${GN}${CT_IP}${NC}"
 if $GENERATED_PW; then
     echo -e "  Root Password: ${YW}${CT_PASSWORD}${NC} (auto-generated)"
 fi
+if $ENABLE_SSH; then
+    echo -e "  SSH:           ${GN}ssh root@${CT_IP}${NC}"
+fi
 echo ""
 echo -e "  ${BL}Health:${NC}  curl http://${CT_IP}/health"
 echo -e "  ${BL}Menu:${NC}    curl http://${CT_IP}/tftp/menu.ipxe"
 echo ""
-echo -e "  ${YW}Import:${NC}  pct exec ${CT_ID} -- nbc import /srv/import/<file>.iso"
-echo -e "  ${YW}List:${NC}    pct exec ${CT_ID} -- nbc list"
+echo -e "  ${YW}Import:${NC}  pct push ${CT_ID} <local.iso> /srv/import/<file>.iso"
+echo -e "  ${YW}List:${NC}    pct exec ${CT_ID} -- docker exec nbc nbc list"
 echo -e "  ${YW}Logs:${NC}    pct exec ${CT_ID} -- docker logs nbc"
 echo ""
-echo -e "  Drop ISOs into ${YW}/srv/import/${NC} for auto-import."
+echo -e "  Drop ISOs into ${YW}/srv/import/${NC} for auto-import (10s polling)."
 echo ""
