@@ -359,6 +359,12 @@ main() {
     log "  Kernel:   $(yq '.assets.kernel' "$entry_dir/recipe.yaml")"
     log "  Initrd:   $(yq '.assets.initrd' "$entry_dir/recipe.yaml")"
     log "  Rootfs:   $(yq '.assets.rootfs' "$entry_dir/recipe.yaml")"
+    
+    # Auto-regenerate iPXE menu if NBC_BASE_URL is set (running inside container)
+    if [[ -n "${NBC_BASE_URL:-}" ]]; then
+        log "Regenerating iPXE menu..."
+        "$SCRIPT_DIR/nbc-generate.sh" --output /srv/tftp/menu.ipxe --base-url "$NBC_BASE_URL"
+    fi
 }
 
 main "$@"
