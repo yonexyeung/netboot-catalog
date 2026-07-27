@@ -21,6 +21,10 @@ log "Server IP: $NBC_SERVER_IP"
 NBC_BASE_URL="${NBC_BASE_URL:-http://$NBC_SERVER_IP/catalog}"
 export NBC_BASE_URL
 
+# Use bind-mounted path for temp files (Docker overlay has limited space)
+export NBC_TMP_DIR="/srv/catalog/.tmp"
+mkdir -p "$NBC_TMP_DIR"
+
 # Patch dnsmasq config with subnet
 NBC_SUBNET="${NBC_SUBNET:-$(echo "$NBC_SERVER_IP" | sed 's/\.[0-9]*$/.0/')}"
 sed -i "s/__NBC_SUBNET__/$NBC_SUBNET/g" /etc/dnsmasq.d/nbc.conf
