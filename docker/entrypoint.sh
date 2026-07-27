@@ -52,19 +52,47 @@ nginx -g "daemon off;" &
 NGINX_PID=$!
 
 # File watcher — auto-import ISOs dropped into /srv/import
+# Uses both inotifywait (instant for in-container writes) and polling (for pct push / external writes)
 log "Watching /srv/import for new ISOs..."
+IMPORT_TRACKER="/var/tmp/nbc-imported.list"
+touch "$IMPORT_TRACKER"
+
+import_iso() {
+    local filepath="$1"
+    local filename
+    filename=$(basename "$filepath")
+    # Skip if already imported
+    if grep -qxF "$filename" "$IMPORT_TRACKER" 2>/dev/null; then
+        return
+    fi
+    log "New ISO detected: $filename"
+    if nbc import "$filepath"; then
+        echo "$filename" >> "$IMPORT_TRACKER"
+        log "Import successful."
+    else
+        log "Import failed for: $filename"
+    fi
+}
+
+# inotifywait for in-container file creation (instant)
 inotifywait -m -e close_write -e moved_to /srv/import --format '%f' 2>/dev/null | while read -r filename; do
     if [[ "$filename" == *.iso ]]; then
-        log "New ISO detected: $filename"
-        if nbc import "/srv/import/$filename"; then
-            log "Import successful. Regenerating menu..."
-            nbc generate --output /srv/tftp/menu.ipxe --base-url "${NBC_BASE_URL}"
-        else
-            log "Import failed for: $filename"
-        fi
+        import_iso "/srv/import/$filename"
     fi
 done &
 WATCHER_PID=$!
+
+# Polling fallback for files written externally (pct push, NFS, etc.)
+(
+    while true; do
+        sleep 10
+        for iso in /srv/import/*.iso; do
+            [[ -f "$iso" ]] || continue
+            import_iso "$iso"
+        done
+    done
+) &
+POLL_PID=$!
 
 log "NetBoot Catalog server running."
 log "  Import folder: /srv/import"
@@ -73,7 +101,7 @@ log "  TFTP:          port 69"
 log "  HTTP:          port 80"
 
 # Wait for any process to exit
-wait -n $DNSMASQ_PID $NGINX_PID $WATCHER_PID 2>/dev/null || true
+wait -n $DNSMASQ_PID $NGINX_PID $WATCHER_PID $POLL_PID 2>/dev/null || true
 log "A service has stopped. Shutting down..."
-kill $DNSMASQ_PID $NGINX_PID $WATCHER_PID 2>/dev/null || true
+kill $DNSMASQ_PID $NGINX_PID $WATCHER_PID $POLL_PID 2>/dev/null || true
 wait
