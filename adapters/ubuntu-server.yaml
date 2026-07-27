@@ -5,9 +5,9 @@ distribution: ubuntu
 homepage: https://ubuntu.com/server
 maintainer: community
 
-# Ubuntu Server uses casper/ structure.
-# PXE boot method: kernel+initrd from casper/, then fetch ISO via url= parameter.
-# Unlike Desktop, Server typically serves the whole ISO rather than individual squashfs.
+# Ubuntu Server uses casper/ structure with layered squashfs.
+# PXE boot requires serving the entire ISO via url= parameter.
+# The original ISO is kept in the catalog entry for this purpose.
 detection:
   - file_exists: casper/vmlinuz
   - file_exists: casper/initrd
@@ -18,19 +18,18 @@ detection:
 assets:
   kernel: casper/vmlinuz
   initrd: casper/initrd
-  # Server ISO uses layered squashfs — rootfs extraction is optional.
-  # Boot primarily works by serving the entire ISO via url= parameter.
-  # Set rootfs to the minimal layer if it exists, otherwise leave empty.
   rootfs: casper/ubuntu-server-minimal.squashfs
   rootfs_type: squashfs
   rootfs_optional: true
+  # Keep the original ISO in the catalog entry (needed for url= boot method)
+  keep_iso: true
 
 boot:
-  # Primary method: serve entire ISO over HTTP, kernel fetches it via url=
-  default: "ip=dhcp url={{base_url}}/ubuntu-server.iso cloud-init=disabled"
+  # url= fetches the entire ISO over HTTP for subiquity installer
+  default: "ip=dhcp url={{base_url}}/{{iso_filename}} cloud-init=disabled"
   variants:
-    autoinstall: 'ip=dhcp url={{base_url}}/ubuntu-server.iso autoinstall ds=nocloud-net\;s={{base_url}}/autoinstall/'
-    debug: "ip=dhcp url={{base_url}}/ubuntu-server.iso cloud-init=disabled debug"
+    autoinstall: 'ip=dhcp url={{base_url}}/{{iso_filename}} autoinstall ds=nocloud-net\;s={{base_url}}/autoinstall/'
+    debug: "ip=dhcp url={{base_url}}/{{iso_filename}} cloud-init=disabled debug"
 
 validation:
   required_files:

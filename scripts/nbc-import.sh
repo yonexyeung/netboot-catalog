@@ -200,6 +200,20 @@ extract_assets() {
     fi
 }
 
+# Copy original ISO into catalog entry (for adapters with keep_iso: true)
+copy_iso_if_needed() {
+    local adapter_file="$1"
+    local iso_file="$2"
+    local dest_dir="$3"
+    
+    local keep_iso
+    keep_iso=$(yq '.assets.keep_iso // "false"' "$adapter_file" 2>/dev/null || echo "false")
+    if [[ "$keep_iso" == "true" ]]; then
+        log "  Copying ISO to catalog (needed for url= boot method)..."
+        cp "$iso_file" "$dest_dir/$(basename "$iso_file")"
+    fi
+}
+
 # Generate recipe.yaml for the catalog entry
 generate_recipe() {
     local adapter_file="$1"
@@ -247,6 +261,7 @@ distribution: ${distribution}
 imported_at: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 source_iso: "$(basename "$iso_file")"
 source_iso_sha256: ${iso_sha256}
+iso_filename: "$(basename "$iso_file")"
 adapter: $(basename "$adapter_file" .yaml)
 
 assets:
@@ -336,6 +351,7 @@ main() {
     
     log "Extracting assets..."
     extract_assets "$adapter_file" "$mount_point" "$temp_dir"
+    copy_iso_if_needed "$adapter_file" "$iso_file" "$temp_dir"
     
     # Step 5: Generate recipe
     log "Generating recipe..."

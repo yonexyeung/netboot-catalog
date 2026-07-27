@@ -109,6 +109,10 @@ EOF
         # Rootfs served via HTTP (fetched by kernel, not iPXE)
         local tftp_prefix="catalog/${id}"
         
+        # Get iso_filename if present
+        local iso_filename
+        iso_filename=$(yq '.iso_filename // ""' "$recipe" 2>/dev/null || echo "")
+        
         # Expand template variables in boot args
         # rootfs_url uses HTTP (kernel fetches it after boot, not subject to iPXE trust)
         local expanded_args="$boot_args"
@@ -116,6 +120,7 @@ EOF
         expanded_args="${expanded_args//\{\{kernel_url\}\}/$entry_url/$kernel_file}"
         expanded_args="${expanded_args//\{\{initrd_url\}\}/$entry_url/$initrd_file}"
         expanded_args="${expanded_args//\{\{rootfs_url\}\}/$entry_url/$rootfs_file}"
+        expanded_args="${expanded_args//\{\{iso_filename\}\}/$iso_filename}"
         
         # Extract server IP/host from BASE_URL for TFTP
         local server_host
@@ -140,6 +145,7 @@ EOF
                 expanded_vargs="${expanded_vargs//\{\{kernel_url\}\}/$entry_url/$kernel_file}"
                 expanded_vargs="${expanded_vargs//\{\{initrd_url\}\}/$entry_url/$initrd_file}"
                 expanded_vargs="${expanded_vargs//\{\{rootfs_url\}\}/$entry_url/$rootfs_file}"
+                expanded_vargs="${expanded_vargs//\{\{iso_filename\}\}/$iso_filename}"
                 
                 echo ""
                 echo ":${id}--${vkey}"
